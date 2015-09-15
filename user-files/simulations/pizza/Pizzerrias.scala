@@ -6,6 +6,8 @@ import scala.util.Random
 import io.gatling.core.Predef._
 import io.gatling.http.Predef._
 import io.gatling.jdbc.Predef._
+import io.gatling.core.validation._
+import scala.concurrent.forkjoin.ThreadLocalRandom
 
 class Pizzerias extends Simulation {
 
@@ -23,7 +25,7 @@ class Pizzerias extends Simulation {
 		.exec(http("pizza place 2")
 			.get("/api/v1/pizzerias/2"))
 
-	setUp(scn.inject(atOnceUsers(100))).protocols(httpProtocol)
+	setUp(scn.inject(atOnceUsers(10))).protocols(httpProtocol)
 }
 
 class Pizzerias2 extends Simulation {
@@ -84,4 +86,95 @@ class PizzeriasDual extends Simulation {
   setUp(scnR.inject(constantUsersPerSec(2) during(60 seconds)),
         scnAll.inject(constantUsersPerSec(2) during(60 seconds))).protocols(httpProtocol)
 }
+
+class PizzeriasQuery extends Simulation {
+  
+  val httpProtocol = http
+    .baseURL("http://pizza-dev.elasticbeanstalk.com")
+
+  val scn = scenario("Pizza Place Searches")
+    .exec(http("search for pizza place")
+      .get("/api/v1/properties/search")
+      .queryParam("city", "Oklahoma City"))
+
+  setUp(scn.inject(constantUsersPerSec(2) 
+                   during(10 seconds)))
+    .protocols(httpProtocol)
+}
+
+class PizzeriasQueryWithCSV extends Simulation {
+  
+  val httpProtocol = http
+    .baseURL("http://pizza-dev.elasticbeanstalk.com")
+
+  val searches = csv("pizza_search.csv").circular
+
+  val scn = scenario("Pizza Place Searches")
+    .feed(searches)
+    .exec(http("search for pizza place")
+      .get("/api/v1/properties/search")
+      .queryParam("${property}","${value}"))
+
+  setUp(scn.inject(constantUsersPerSec(2) 
+    during(10 seconds)))
+    .protocols(httpProtocol)
+}
+
+class PizzeriasQueryWithCheck extends Simulation {
+  
+  val httpProtocol = http
+    .baseURL("http://pizza-dev.elasticbeanstalk.com")
+
+  val searches = csv("pizza_search.csv").circular
+
+  val scn = scenario("Pizza Place Searches")
+    .feed(searches)
+    .exec(http("search for pizza place")
+      .get("/api/v1/properties/search")
+      .queryParam("${property}","${value}")
+      .check(bodyString.not("[]")))
+
+  setUp(scn.inject(constantUsersPerSec(2) 
+    during(10 seconds)))
+    .protocols(httpProtocol)
+}
+
+class PizzeriasJsonQuery extends Simulation {
+
+  val httpProtocol = http
+    .baseURL("http://pizza-dev.elasticbeanstalk.com")
+
+  val searches = jsonUrl("http://pizza-dev.elasticbeanstalk.com/api/v1/pizzerias")
+
+  val scn = scenario("Pizza Place JSON Searches")
+    .feed(searches)
+    .exec(http("search for pizza stuff by json")
+      .get("/api/v1/properties/search?city=${properties.city}")
+      .check(bodyString.not("[]")))
+
+  setUp(scn.inject(constantUsersPerSec(20) during(2 seconds))).protocols(httpProtocol)
+}
+
+class PizzeriasJsonQueryAdvanced extends Simulation {
+  // This example only chooses 1 property for the entire simulation
+
+  val httpProtocol = http
+    .baseURL("http://pizza-dev.elasticbeanstalk.com")
+
+  val searches = jsonUrl("http://pizza-dev.elasticbeanstalk.com/api/v1/pizzerias")
+
+  val attr = Array("city","pizzeria","website","address")
+
+  val property = Random.shuffle(attr.toList).head
+
+  val scn = scenario("Pizza Place JSON Searches")
+    .feed(searches)
+    .exec(http("search for pizza stuff by json")
+      .get(s"/api/v1/properties/search?$property=$${properties.$property}")
+      .check(bodyString.not("[]")))
+
+  setUp(scn.inject(constantUsersPerSec(20) during(2 seconds))).protocols(httpProtocol)
+}
+
+
 
